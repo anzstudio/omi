@@ -215,7 +215,9 @@ class Conversation(BaseModel):
 
     @model_validator(mode='after')
     def apply_friend_language_default(self):
-        if self.source in (ConversationSource.friend, ConversationSource.friend_com) and not self.language:
+        if self.source in (ConversationSource.friend, ConversationSource.friend_com) and (
+            self.language is None or not self.language.strip()
+        ):
             self.language = 'en'
         return self
 
@@ -304,7 +306,9 @@ class CreateConversation(BaseModel):
 
     @model_validator(mode='after')
     def apply_friend_language_default(self):
-        if self.source in (ConversationSource.friend, ConversationSource.friend_com) and not self.language:
+        if self.source in (ConversationSource.friend, ConversationSource.friend_com) and (
+            self.language is None or not self.language.strip()
+        ):
             self.language = 'en'
         return self
 
@@ -337,7 +341,9 @@ class ExternalIntegrationCreateConversation(BaseModel):
 
     @model_validator(mode='after')
     def apply_friend_language_default(self):
-        if self.source in (ConversationSource.friend, ConversationSource.friend_com) and not self.language:
+        if self.source in (ConversationSource.friend, ConversationSource.friend_com) and (
+            self.language is None or not self.language.strip()
+        ):
             self.language = 'en'
         return self
 

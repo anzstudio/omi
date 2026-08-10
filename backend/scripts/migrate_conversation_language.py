@@ -9,7 +9,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List
 
-from database._client import db, get_users_uid
+from google.cloud import firestore
+
+from database._client import get_firestore_client, get_users_uid
 
 
 def _positive_int(value: str) -> int:
@@ -26,11 +28,18 @@ def _nonnegative_int(value: str) -> int:
     return parsed
 
 
-def process_user(uid: str, dry_run: bool) -> Dict[str, Any]:
+def process_user(uid: str, dry_run: bool, firestore_client: Any = None) -> Dict[str, Any]:
     """Fix language for one user's conversations."""
     fixed = 0
     try:
-        convs = db.collection('users').document(uid).collection('conversations').stream()
+        client = firestore_client or get_firestore_client()
+        convs = (
+            client.collection('users')
+            .document(uid)
+            .collection('conversations')
+            .where(filter=firestore.FieldFilter('source', 'in', ['friend', 'friend_com']))
+            .stream()
+        )
         for conv in convs:
             data: Dict[str, Any] = conv.to_dict() or {}
 
@@ -70,8 +79,10 @@ def main() -> int:
 
     print(f'Conversation language migration — {"DRY RUN" if args.dry_run else "APPLY"}')
 
-    if args.uid:
-        uids = [args.uid]
+    if args.uid is not None:
+        if not args.uid.strip():
+            parser.error('--uid must not be empty')
+        uids = [args.uid.strip()]
     else:
         uids = get_users_uid()
         if args.limit:
@@ -79,8 +90,9 @@ def main() -> int:
     print(f'Processing {len(uids)} user(s) with {args.workers} workers')
 
     results: List[Dict[str, Any]] = []
+    firestore_client = get_firestore_client()
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = [executor.submit(process_user, uid, args.dry_run) for uid in uids]
+        futures = [executor.submit(process_user, uid, args.dry_run, firestore_client) for uid in uids]
         for i, future in enumerate(futures):
             results.append(future.result())
             if (i + 1) % 1000 == 0:
