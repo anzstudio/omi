@@ -58,8 +58,7 @@ class PrerecordedSTTProvider(ABC):
         diarize: bool = True,
         language: Optional[str] = None,
         keywords: Optional[Sequence[str]] = None,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], str]]:
-        ...
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], str]]: ...
 
     @abstractmethod
     def transcribe_bytes(
@@ -73,8 +72,7 @@ class PrerecordedSTTProvider(ABC):
         language: Optional[str] = None,
         return_language: bool = False,
         keywords: Optional[Sequence[str]] = None,
-    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], str]]:
-        ...
+    ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], str]]: ...
 
 
 def get_prerecorded_service(language: Optional[str] = 'en') -> Tuple[str, Optional[str], str]:
