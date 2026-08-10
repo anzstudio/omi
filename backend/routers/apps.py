@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import httpx
 from typing import List, Optional
 from urllib.parse import urlparse
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field, ValidationError, field_validator
 from ulid import ULID
 from fastapi import APIRouter, Body, Depends, Form, UploadFile, File, HTTPException, Header, Query
 from fastapi.responses import HTMLResponse
@@ -367,6 +367,14 @@ class PersonaRecordResponse(App):
 
 class AppRejectRequest(PydanticBaseModel):
     reason: str
+
+    @field_validator('reason')
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        reason = value.strip()
+        if not reason:
+            raise ValueError('reason must not be blank')
+        return reason
 
 
 class ReviewAppRequest(PydanticBaseModel):

@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 from routers import apps as apps_mod
-from routers.apps import ReplyToReviewRequest
+from routers.apps import AppRejectRequest, ReplyToReviewRequest
 
 
 def _call(data):
@@ -48,3 +48,13 @@ def test_non_string_response_rejected_by_pydantic():
 def test_valid_response_succeeds():
     result = _call(ReplyToReviewRequest(reviewer_uid='r1', response='Thanks for the feedback'))
     assert result['status'] == 'ok'
+
+
+def test_app_rejection_reason_rejects_blank_values():
+    for reason in ('', '   '):
+        with pytest.raises(pydantic.ValidationError):
+            AppRejectRequest(reason=reason)
+
+
+def test_app_rejection_reason_is_trimmed():
+    assert AppRejectRequest(reason='  Needs changes  ').reason == 'Needs changes'
