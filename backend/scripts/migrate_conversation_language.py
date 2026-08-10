@@ -13,16 +13,12 @@ from google.cloud import firestore
 
 from database._client import db, get_users_uid
 
+
 def process_user(uid: str, dry_run: bool, full_scan: bool) -> Dict[str, Any]:
     """Fix language for one user's conversations."""
     fixed = 0
     try:
-        convs = (
-            db.collection('users')
-            .document(uid)
-            .collection('conversations')
-            .stream()
-        )
+        convs = db.collection('users').document(uid).collection('conversations').stream()
         for conv in convs:
             data: Dict[str, Any] = conv.to_dict() or {}
 
@@ -45,6 +41,7 @@ def process_user(uid: str, dry_run: bool, full_scan: bool) -> Dict[str, Any]:
         return {'uid': uid, 'fixed': fixed, 'status': 'ok'}
     except Exception as e:  # noqa: BLE001 — one user shouldn't abort the run
         return {'uid': uid, 'fixed': fixed, 'status': f'error: {e}'}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Set default "en" language for Friend conversations')
