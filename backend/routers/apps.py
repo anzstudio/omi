@@ -63,7 +63,6 @@ from database.apps import (
 from database.webhook_health import clear_app_webhook_health
 from database.auth import get_user_from_uid
 from database.redis_db import (
-    delete_generic_cache,
     get_generic_cache,
     set_generic_cache,
     get_specific_user_review,
@@ -73,7 +72,6 @@ from database.redis_db import (
     disable_app,
     is_app_enabled,
     delete_app_cache_by_id,
-    is_username_taken,
     save_username,
     get_enabled_apps,
     get_conversation_summary_app_ids,
