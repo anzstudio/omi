@@ -521,6 +521,7 @@ def main() -> int:
     errors.extend(check_python_cli_release_version_source())
     errors.extend(check_react_native_release_tags())
     errors.extend(check_firmware_release_metadata())
+    errors.extend(check_firmware_signing_key_boundary())
 
     if errors:
         for error in errors:
@@ -611,7 +612,9 @@ def check_desktop_codemagic_release() -> list[str]:
     if beta_smoke_index == -1:
         errors.append("desktop release must run the signed Omi Beta artifact smoke in a distinct provider step")
     elif release_index == -1 or not (smoke_index < beta_smoke_index < release_index):
-        errors.append("desktop signed Omi Beta artifact smoke must run after stable smoke and before Create GitHub release")
+        errors.append(
+            "desktop signed Omi Beta artifact smoke must run after stable smoke and before Create GitHub release"
+        )
     if dispatch_index == -1 or release_index == -1 or dispatch_index < release_index:
         errors.append("desktop release must dispatch trusted macOS qualification after GitHub candidate publication")
     reserve_index = desktop_workflow_body.find("/v2/desktop/beta/candidates/reserve")
@@ -911,7 +914,9 @@ def check_desktop_qualification_runner() -> list[str]:
         < probe.rfind('rm -f -- "$gha_application_credentials_file" "$gha_credentials_file"')
         < probe.find("probe_beta_uid_continuity.py")
     ):
-        errors.append("desktop qualification runner must remove Firebase probe and GitHub auth credentials before probing")
+        errors.append(
+            "desktop qualification runner must remove Firebase probe and GitHub auth credentials before probing"
+        )
     if "working-directory: qualification-controls" not in probe:
         errors.append("desktop qualification runner must run the Firebase probe from trusted main controls")
 
@@ -943,7 +948,9 @@ def check_desktop_qualification_runner() -> list[str]:
         "qualification_run_attempt:",
     ):
         if required_fragment not in recovery_text:
-            errors.append(f"desktop beta recovery workflow is missing retained-evidence access guard: {required_fragment}")
+            errors.append(
+                f"desktop beta recovery workflow is missing retained-evidence access guard: {required_fragment}"
+            )
 
     candidate_gate = ROOT / ".github/scripts/check-desktop-auto-beta-candidate.py"
     candidate_gate_text = candidate_gate.read_text(encoding="utf-8") if candidate_gate.exists() else ""
@@ -1054,7 +1061,9 @@ def check_mobile_codemagic_release_triggers() -> list[str]:
         else:
             triggers = workflow.get("on")
             if not isinstance(triggers, dict):
-                errors.append("mobile internal build dispatcher must declare push, schedule, and workflow_dispatch triggers")
+                errors.append(
+                    "mobile internal build dispatcher must declare push, schedule, and workflow_dispatch triggers"
+                )
             else:
                 push = triggers.get("push")
                 if not isinstance(push, dict) or push.get("branches") != ["main"] or push.get("paths") != ["app/**"]:
@@ -1095,7 +1104,9 @@ def check_mobile_codemagic_release_triggers() -> list[str]:
                             workflow_values = None
                         break
                 if workflow_values != ("ios-internal-auto", "android-internal-auto"):
-                    errors.append("mobile internal build dispatcher script must declare both Codemagic mobile workflows")
+                    errors.append(
+                        "mobile internal build dispatcher script must declare both Codemagic mobile workflows"
+                    )
 
     if (ROOT / ".github/workflows/mobile_internal_auto.yml").exists():
         errors.append("mobile internal releases must not be dispatched through GitHub Actions")
@@ -1143,6 +1154,86 @@ def check_react_native_release_tags() -> list[str]:
     if release_tag == "v${version}" and ':tag => "v#{s.version}"' not in podspec_text:
         return ["React Native podspec tag must match release-it tagName v${version}"]
     return []
+
+
+RETIRED_FIRMWARE_SIGNING_KEYS = ("root-rsa-2048.pem", "enc-rsa2048-priv.pem")
+PRIVATE_KEY_HEADER = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----")
+
+
+def check_firmware_signing_key_boundary() -> list[str]:
+    """The CV1 build must fail closed unless an out-of-tree signing key is injected.
+
+    The first two probes are behavioral: they execute the production build script
+    and assert it refuses to reach the toolchain. The remaining probes are static
+    tripwires over checked-in material, which is the only way to assert that no
+    private key is present at the repository tip.
+    """
+    script = ROOT / "omi/firmware/scripts/ci/build-cv1.sh"
+    if not script.exists():
+        return ["omi/firmware/scripts/ci/build-cv1.sh is missing"]
+
+    errors: list[str] = []
+    try:
+        bash = bash_executable()
+    except FileNotFoundError as exc:
+        return [f"firmware signing boundary smoke failed: {exc}"]
+
+    def _run(key_file: str | None) -> subprocess.CompletedProcess[str]:
+        env = {name: value for name, value in os.environ.items() if name != "MCUBOOT_SIGNING_KEY_FILE"}
+        if key_file is not None:
+            env["MCUBOOT_SIGNING_KEY_FILE"] = key_file
+        return subprocess.run(
+            [bash, str(script)],
+            cwd=ROOT,
+            env=env,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    unset = _run(None)
+    if unset.returncode == 0:
+        errors.append("build-cv1.sh must fail when MCUBOOT_SIGNING_KEY_FILE is unset")
+    elif "MCUBOOT_SIGNING_KEY_FILE" not in (unset.stderr or ""):
+        errors.append("build-cv1.sh must name MCUBOOT_SIGNING_KEY_FILE when it refuses to build")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        missing = _run(str(Path(temp_dir) / "absent-signing-key.pem"))
+    if missing.returncode == 0:
+        errors.append("build-cv1.sh must fail when MCUBOOT_SIGNING_KEY_FILE does not resolve to a file")
+
+    firmware = ROOT / "omi/firmware"
+    if firmware.is_dir():
+        for name in RETIRED_FIRMWARE_SIGNING_KEYS:
+            if (firmware / "bootloader/mcuboot" / name).exists():
+                errors.append(f"retired firmware signing key {name} must not be committed")
+        for pem in firmware.rglob("*.pem"):
+            try:
+                text = pem.read_text(encoding="utf-8", errors="strict")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if PRIVATE_KEY_HEADER.search(text):
+                errors.append(f"private key material must not be committed: {pem.relative_to(ROOT).as_posix()}")
+
+    for sysbuild in sorted(firmware.rglob("sysbuild.conf")) if firmware.is_dir() else []:
+        text = sysbuild.read_text(encoding="utf-8")
+        if "SB_CONFIG_BOOT_SIGNATURE_KEY_FILE" in text:
+            errors.append(
+                f"{sysbuild.relative_to(ROOT).as_posix()} must not pin a signing key; "
+                "it is injected at build time via -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE"
+            )
+
+    workflow = ROOT / ".github/workflows/firmware_release.yml"
+    if workflow.exists():
+        workflow_text = workflow.read_text(encoding="utf-8")
+        if "secrets.MCUBOOT_SIGNING_KEY" not in workflow_text:
+            errors.append("firmware_release.yml must inject the MCUBOOT_SIGNING_KEY secret")
+        if "MCUBOOT_SIGNING_KEY_FILE=" not in workflow_text:
+            errors.append("firmware_release.yml must pass MCUBOOT_SIGNING_KEY_FILE into the build container")
+
+    return errors
 
 
 def check_firmware_release_metadata() -> list[str]:
