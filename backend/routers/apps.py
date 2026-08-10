@@ -2265,7 +2265,24 @@ def approve_app(app_id: str, uid: str, secret_key: str = Header(...)):
 
 
 @router.post('/v1/apps/{app_id}/reject', tags=['v1'], response_model=AppMutationResponse)
-def reject_app(app_id: str, uid: str, data: AppRejectRequest, secret_key: str = Header(...)):
+def reject_app(app_id: str, uid: str, secret_key: str = Header(...)):
+    if secret_key != os.getenv('ADMIN_KEY'):
+        raise HTTPException(status_code=403, detail='You are not authorized to perform this action')
+    change_app_approval_status(app_id, False)
+    invalidate_approved_apps_cache()  # App removed from public list, invalidate cache
+    delete_app_cache_by_id(app_id)
+    app = get_available_app_by_id(app_id, uid)
+    send_notification(
+        uid,
+        'App Rejected 😔',
+        f'Your app {app["name"]} has been rejected. Please make the necessary changes and resubmit for approval.',
+        data={'navigate_to': f'/apps/{app_id}'},
+    )
+    return {'status': 'ok'}
+
+
+@router.post('/v2/apps/{app_id}/reject', tags=['v2'], response_model=AppMutationResponse)
+def reject_app_v2(app_id: str, uid: str, data: AppRejectRequest, secret_key: str = Header(...)):
     if secret_key != os.getenv('ADMIN_KEY'):
         raise HTTPException(status_code=403, detail='You are not authorized to perform this action')
     change_app_approval_status(app_id, False)
