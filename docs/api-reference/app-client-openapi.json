@@ -6832,6 +6832,7 @@
                 "type": "null"
               }
             ],
+            "default": "en",
             "title": "Language"
           },
           "photos": {
@@ -18585,6 +18586,7 @@
                 "type": "null"
               }
             ],
+            "default": "en",
             "title": "Language"
           },
           "people": {
