@@ -57,8 +57,6 @@ def process_user_conversations(user_doc, dry_run=False):
 
     for doc in conversations:
         data = doc.to_dict()
-        if data.get('source') not in ('friend', 'friend_com'):
-            continue
         language = data.get('language')
 
         # We only update if language is None or empty string
