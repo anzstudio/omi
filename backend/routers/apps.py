@@ -73,7 +73,6 @@ from database.redis_db import (
     disable_app,
     is_app_enabled,
     delete_app_cache_by_id,
-    is_username_taken,
     save_username,
     get_enabled_apps,
     get_conversation_summary_app_ids,
