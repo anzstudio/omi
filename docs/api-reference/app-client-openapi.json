@@ -3098,6 +3098,8 @@
       "AppRejectRequest": {
         "properties": {
           "reason": {
+            "maxLength": 500,
+            "minLength": 1,
             "title": "Reason",
             "type": "string"
           }

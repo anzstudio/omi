@@ -58,3 +58,37 @@ def test_app_rejection_reason_rejects_blank_values():
 
 def test_app_rejection_reason_is_trimmed():
     assert AppRejectRequest(reason='  Needs changes  ').reason == 'Needs changes'
+
+
+def test_app_rejection_reason_rejects_oversized_values():
+    with pytest.raises(pydantic.ValidationError):
+        AppRejectRequest(reason='x' * 501)
+
+
+def test_reject_app_v2_sends_reason_and_web_owner_route(monkeypatch):
+    monkeypatch.setenv('ADMIN_KEY', 'admin-key')
+    notification = MagicMock()
+    with patch.object(apps_mod, 'change_app_approval_status') as change_status, patch.object(
+        apps_mod, 'invalidate_approved_apps_cache'
+    ) as invalidate_cache, patch.object(apps_mod, 'delete_app_cache_by_id') as delete_cache, patch.object(
+        apps_mod, 'get_available_app_by_id', return_value={'name': 'Test App'}
+    ), patch.object(
+        apps_mod, 'send_notification', notification
+    ):
+        result = apps_mod.reject_app_v2(
+            'app-1',
+            'uid1',
+            AppRejectRequest(reason='Needs changes'),
+            'admin-key',
+        )
+
+    assert result == {'status': 'ok'}
+    change_status.assert_called_once_with('app-1', False)
+    invalidate_cache.assert_called_once_with()
+    delete_cache.assert_called_once_with('app-1')
+    notification.assert_called_once_with(
+        'uid1',
+        'App Rejected 😔',
+        'Your app Test App has been rejected. Needs changes Please make the necessary changes and resubmit for approval.',
+        data={'navigate_to': '/apps/app-1', 'web_navigate_to': '/my-apps/app-1'},
+    )
