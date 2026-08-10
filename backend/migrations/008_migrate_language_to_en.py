@@ -1,41 +1,48 @@
-import firebase_admin
-from firebase_admin import credentials, firestore
-import sys
-import os
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+import os
+import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Add project root to the Python path
+# Add project root to the Python path before local imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import logging
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize Firebase Admin SDK
-try:
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred)
-except ValueError:
-    pass
-except Exception as e:
-    logger.error("Error initializing Firebase Admin SDK. Make sure GOOGLE_APPLICATION_CREDENTIALS is set.")
-    logger.error(e)
-    sys.exit(1)
 
-db = firestore.client()
+def _init_firebase():
+    if not firebase_admin._apps:
+        try:
+            cred = credentials.ApplicationDefault()
+            firebase_admin.initialize_app(cred)
+        except ValueError:
+            pass
+        except Exception as e:
+            logger.error("Error initializing Firebase Admin SDK. Make sure GOOGLE_APPLICATION_CREDENTIALS is set.")
+            logger.error(e)
+            sys.exit(1)
+
+
+def get_db():
+    _init_firebase()
+    return firestore.client()
+
 
 def get_all_users():
     """Get all user documents."""
-    users_ref = db.collection('users')
+    users_ref = get_db().collection('users')
     return list(users_ref.stream())
+
 
 def process_user_conversations(user_doc, dry_run=False):
     """Migrate empty language fields to 'en' for a single user."""
     uid = user_doc.id
-    conversations_ref = db.collection('users').document(uid).collection('conversations')
+    conversations_ref = get_db().collection('users').document(uid).collection('conversations')
 
     # Query for conversations where language is not set or empty
     # Firestore doesn't have a direct "is null" query that works well across all cases,
@@ -45,7 +52,7 @@ def process_user_conversations(user_doc, dry_run=False):
     conversations = list(conversations_ref.stream())
 
     updates = 0
-    batch = db.batch()
+    batch = get_db().batch()
     batch_count = 0
 
     for doc in conversations:
@@ -59,7 +66,7 @@ def process_user_conversations(user_doc, dry_run=False):
                 batch_count += 1
                 if batch_count >= 499:
                     batch.commit()
-                    batch = db.batch()
+                    batch = get_db().batch()
                     batch_count = 0
             updates += 1
 
@@ -67,6 +74,7 @@ def process_user_conversations(user_doc, dry_run=False):
         batch.commit()
 
     return updates
+
 
 def main():
     parser = argparse.ArgumentParser(description='Migrate empty conversation language to en')
@@ -96,6 +104,7 @@ def main():
     elapsed = time.time() - start
     logger.info(f"Done in {elapsed:.1f}s")
     logger.info(f"Results: {total_updates} conversations updated across {users_updated} users.")
+
 
 if __name__ == '__main__':
     main()
