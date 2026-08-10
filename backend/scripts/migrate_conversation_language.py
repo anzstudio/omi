@@ -11,33 +11,16 @@ from typing import Any, Dict, List
 
 from google.cloud import firestore
 
-from database._client import get_firestore_client, get_users_uid
+from database._client import db, get_users_uid
 
-
-def _positive_int(value: str) -> int:
-    parsed = int(value)
-    if parsed < 1:
-        raise argparse.ArgumentTypeError('must be at least 1')
-    return parsed
-
-
-def _nonnegative_int(value: str) -> int:
-    parsed = int(value)
-    if parsed < 0:
-        raise argparse.ArgumentTypeError('must be non-negative')
-    return parsed
-
-
-def process_user(uid: str, dry_run: bool, firestore_client: Any = None) -> Dict[str, Any]:
+def process_user(uid: str, dry_run: bool, full_scan: bool) -> Dict[str, Any]:
     """Fix language for one user's conversations."""
     fixed = 0
     try:
-        client = firestore_client or get_firestore_client()
         convs = (
-            client.collection('users')
+            db.collection('users')
             .document(uid)
             .collection('conversations')
-            .where(filter=firestore.FieldFilter('source', 'in', ['friend', 'friend_com']))
             .stream()
         )
         for conv in convs:
@@ -49,7 +32,7 @@ def process_user(uid: str, dry_run: bool, firestore_client: Any = None) -> Dict[
                 continue
 
             language = data.get('language')
-            if language is not None and (not isinstance(language, str) or language.strip()):
+            if language is not None:
                 continue
 
             updates = {'language': 'en'}
@@ -63,26 +46,23 @@ def process_user(uid: str, dry_run: bool, firestore_client: Any = None) -> Dict[
     except Exception as e:  # noqa: BLE001 — one user shouldn't abort the run
         return {'uid': uid, 'fixed': fixed, 'status': f'error: {e}'}
 
-
-def _build_parser() -> argparse.ArgumentParser:
+def main() -> int:
     parser = argparse.ArgumentParser(description='Set default "en" language for Friend conversations')
     parser.add_argument('--dry-run', action='store_true', help='Only print what would change')
     parser.add_argument('--uid', help='Process a single user by uid instead of all users')
-    parser.add_argument('--workers', type=_positive_int, default=10, help='Number of parallel workers (default 10)')
-    parser.add_argument('--limit', type=_nonnegative_int, default=0, help='Max users to process (0 = all)')
-    return parser
-
-
-def main() -> int:
-    parser = _build_parser()
+    parser.add_argument('--workers', type=int, default=10, help='Number of parallel workers (default 10)')
+    parser.add_argument('--limit', type=int, default=0, help='Max users to process (0 = all)')
+    parser.add_argument(
+        '--full-scan',
+        action='store_true',
+        help='Scan every conversation per user (used for consistency with other scripts)',
+    )
     args = parser.parse_args()
 
     print(f'Conversation language migration — {"DRY RUN" if args.dry_run else "APPLY"}')
 
-    if args.uid is not None:
-        if not args.uid.strip():
-            parser.error('--uid must not be empty')
-        uids = [args.uid.strip()]
+    if args.uid:
+        uids = [args.uid]
     else:
         uids = get_users_uid()
         if args.limit:
@@ -90,9 +70,8 @@ def main() -> int:
     print(f'Processing {len(uids)} user(s) with {args.workers} workers')
 
     results: List[Dict[str, Any]] = []
-    firestore_client = get_firestore_client()
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = [executor.submit(process_user, uid, args.dry_run, firestore_client) for uid in uids]
+        futures = [executor.submit(process_user, uid, args.dry_run, args.full_scan) for uid in uids]
         for i, future in enumerate(futures):
             results.append(future.result())
             if (i + 1) % 1000 == 0:
