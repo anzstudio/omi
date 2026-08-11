@@ -2298,7 +2298,7 @@ def reject_app_v2(app_id: str, uid: str, data: AppRejectRequest, secret_key: str
     delete_app_cache_by_id(app_id)
     app = get_available_app_by_id(app_id, uid)
     send_notification(
-        uid,
+        app['uid'],
         'App Rejected 😔',
         f'Your app {app["name"]} has been rejected. {data.reason} Please make the necessary changes and resubmit for approval.',
         data={'navigate_to': f'/apps/{app_id}', 'web_navigate_to': f'/my-apps/{app_id}'},

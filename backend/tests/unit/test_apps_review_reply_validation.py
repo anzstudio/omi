@@ -71,7 +71,7 @@ def test_reject_app_v2_sends_reason_and_web_owner_route(monkeypatch):
     with patch.object(apps_mod, 'change_app_approval_status') as change_status, patch.object(
         apps_mod, 'invalidate_approved_apps_cache'
     ) as invalidate_cache, patch.object(apps_mod, 'delete_app_cache_by_id') as delete_cache, patch.object(
-        apps_mod, 'get_available_app_by_id', return_value={'name': 'Test App'}
+        apps_mod, 'get_available_app_by_id', return_value={'name': 'Test App', 'uid': 'owner-uid'}
     ), patch.object(
         apps_mod, 'send_notification', notification
     ):
@@ -87,7 +87,7 @@ def test_reject_app_v2_sends_reason_and_web_owner_route(monkeypatch):
     invalidate_cache.assert_called_once_with()
     delete_cache.assert_called_once_with('app-1')
     notification.assert_called_once_with(
-        'uid1',
+        'owner-uid',
         'App Rejected 😔',
         'Your app Test App has been rejected. Needs changes Please make the necessary changes and resubmit for approval.',
         data={'navigate_to': '/apps/app-1', 'web_navigate_to': '/my-apps/app-1'},
