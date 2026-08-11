@@ -10,6 +10,8 @@ import 'dart:io';
 /// we test with a single init and exercise the override/flag mechanisms.
 class _TestEnvFields implements EnvFields {
   @override
+  String? get openAIAPIKey => null;
+  @override
   String? get posthogApiKey => null;
   @override
   String? get apiBaseUrl => null;
