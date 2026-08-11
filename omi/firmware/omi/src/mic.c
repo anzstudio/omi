@@ -123,6 +123,16 @@ static void process_audio_buffer(void *buffer, uint32_t size)
     interleaved_stereo_to_mono(inter, frames, mono_buffer);
 
 #ifdef CONFIG_OMI_ENABLE_T5838_AAD
+    /* First block after an AAD wake carries ~7ms of railed/settling-transient
+     * PCM baked in by the T5838 restart itself (measured in AAD_HARDWARE.md:
+     * "first ~7ms rail to +-32767, unusable", matches datasheet wake time).
+     * One 100ms block safely covers it. Drop it here instead of letting it
+     * reach the codec, where it would encode as an audible pop/click. */
+    if (atomic_cas(&aad_woke, 1, 0)) {
+        aad_last_voice_ms = k_uptime_get();
+        k_mem_slab_free(&mem_slab, buffer);
+        return;
+    }
     aad_track_silence(mono_buffer, frames);
 #endif
 
@@ -428,14 +438,13 @@ static void aad_thread_fn(void *p1, void *p2, void *p3)
     }
 }
 
-/* Called per mic frame: track silence and request AAD sleep after a hold. */
+/* Called per mic frame (never the wake block itself -- process_audio_buffer
+ * consumes aad_woke and drops that one before this runs): track silence and
+ * request AAD sleep after a hold. */
 static void aad_track_silence(const int16_t *buf, size_t n)
 {
     int64_t now = k_uptime_get();
 
-    if (atomic_cas(&aad_woke, 1, 0)) {
-        aad_last_voice_ms = now;
-    }
     if (avg_abs_amplitude(buf, n) >= CONFIG_OMI_VAD_ABS_THRESHOLD) {
         aad_last_voice_ms = now;
     }
