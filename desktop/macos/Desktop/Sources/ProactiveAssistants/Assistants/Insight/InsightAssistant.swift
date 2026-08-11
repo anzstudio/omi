@@ -23,7 +23,8 @@ actor InsightAssistant: ProactiveAssistant {
         // notifications are off (the default), don't spend a Gemini call analyzing
         // screenshots. Proactive assistants only run when notifications are enabled;
         // re-enabling notifications in Settings resumes analysis.
-        InsightAssistantSettings.shared.isEnabled
+        !ContextBucketsFeature.isEnabled
+          && InsightAssistantSettings.shared.isEnabled
           && InsightAssistantSettings.shared.notificationsEnabled
       }
     }
@@ -689,7 +690,18 @@ actor InsightAssistant: ProactiveAssistant {
         let query = toolCall.arguments["query"] as? String ?? ""
         sqlCount += 1
         log("Insight: P1 execute_sql iter \(iteration): \(query)")
-        let sqlToolCall = ToolCall(name: "execute_sql", arguments: ["query": query], thoughtSignature: nil)
+        let privacyEnabled = await MainActor.run { ContextBucketsFeature.isEnabled }
+        let excluded = await MainActor.run { RewindSettings.shared.excludedApps }
+        var sqlArguments: [String: Any] = ["query": query]
+        if privacyEnabled {
+          sqlArguments = [
+            "query": InsightSQLPrivacy.filtered(query, excludedApps: excluded),
+            "read_only": true,
+          ]
+        }
+        let sqlToolCall = ToolCall(
+          name: "execute_sql",
+          arguments: sqlArguments, thoughtSignature: nil)
         let resultStr = await ChatToolExecutor.execute(sqlToolCall)
         let truncated = resultStr.count > 2000 ? String(resultStr.prefix(2000)) + "... (truncated)" : resultStr
         log("Insight: P1 sql result (\(resultStr.count) chars): \(truncated)")
@@ -853,7 +865,18 @@ actor InsightAssistant: ProactiveAssistant {
         let query = toolCall.arguments["query"] as? String ?? ""
         sqlCount += 1
         log("Insight: P2 execute_sql iter \(p2Iteration): \(query)")
-        let sqlToolCall = ToolCall(name: "execute_sql", arguments: ["query": query], thoughtSignature: nil)
+        let privacyEnabled = await MainActor.run { ContextBucketsFeature.isEnabled }
+        let excluded = await MainActor.run { RewindSettings.shared.excludedApps }
+        var sqlArguments: [String: Any] = ["query": query]
+        if privacyEnabled {
+          sqlArguments = [
+            "query": InsightSQLPrivacy.filtered(query, excludedApps: excluded),
+            "read_only": true,
+          ]
+        }
+        let sqlToolCall = ToolCall(
+          name: "execute_sql",
+          arguments: sqlArguments, thoughtSignature: nil)
         let resultStr = await ChatToolExecutor.execute(sqlToolCall)
         let truncated = resultStr.count > 2000 ? String(resultStr.prefix(2000)) + "... (truncated)" : resultStr
         log("Insight: P2 sql result (\(resultStr.count) chars): \(truncated)")
