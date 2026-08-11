@@ -150,7 +150,10 @@ static inline void notify_long_tap()
 
 #define TAP_THRESHOLD 300     // 300 ms for single tap
 #define DOUBLE_TAP_WINDOW 600 // 600 ms maximum for double-tap
-#define LONG_PRESS_TIME 3000  // 3000 ms for long press (power off)
+#define LONG_PRESS_TIME 7000  // 7000 ms for long press (power off) -- raised from 3000
+                               // so a deliberate long-press gesture (detected app-side
+                               // from press/release timestamps) has margin before it
+                               // hits the shutdown threshold
 
 typedef enum {
     BUTTON_EVENT_NONE,
