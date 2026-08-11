@@ -261,7 +261,9 @@ static ssize_t time_sync_write_handler(struct bt_conn *conn,
     LOG_INF("Time synchronized successfully");
 
     /* Notify SD card module so it can rename temp files to real timestamps */
+#ifdef CONFIG_OMI_ENABLE_OFFLINE_STORAGE
     sd_notify_time_synced(epoch_s);
+#endif
 
     return len;
 }
