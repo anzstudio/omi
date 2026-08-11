@@ -77,6 +77,20 @@ INVENTORIED_DIRECT_EXCEPTION_FILES = {
     'utils/other/chat_file.py',
     'routers/omni_relay.py',
 }
+# A direct exception must still have an explicit, source-local gateway guardrail.  Most direct
+# surfaces fail closed through ``raise_if_gateway_feature_mode_blocks_direct_model_surface``;
+# file chat is the one ratified exception because Files/Assistants lifecycle calls have no
+# gateway lane yet.  It records the exception on every entry point instead of pretending it is
+# gateway-routed.  Keep these markers here so adding another direct call cannot silently bypass
+# the contract.
+DIRECT_EXCEPTION_GUARDRAIL_MARKERS = {
+    'utils/other/chat_file.py': (
+        '_record_direct_file_chat_surface',
+        'record_direct_exception_surface',
+        'should_route_features_through_gateway',
+    ),
+    'routers/omni_relay.py': ('raise_if_gateway_feature_mode_blocks_direct_model_surface',),
+}
 
 
 def test_every_model_config_feature_has_inventory_and_gateway_lane():
@@ -173,14 +187,16 @@ def test_direct_provider_usage_stays_inside_approved_boundaries():
     assert stale_allowlist == []
 
 
-def test_direct_exception_files_are_inventoried_and_fail_closed_for_gateway_flip():
+def test_direct_exception_files_are_inventoried_and_guarded_for_gateway_flip():
     inventory = _load_inventory()
     inventory_paths = {_code_path_file(surface['code_path']) for surface in inventory['surfaces']}
 
     assert INVENTORIED_DIRECT_EXCEPTION_FILES <= inventory_paths
-    for rel_path in INVENTORIED_DIRECT_EXCEPTION_FILES:
+    assert INVENTORIED_DIRECT_EXCEPTION_FILES == set(DIRECT_EXCEPTION_GUARDRAIL_MARKERS)
+    for rel_path, markers in DIRECT_EXCEPTION_GUARDRAIL_MARKERS.items():
         source = (BACKEND_DIR / rel_path).read_text(encoding='utf-8')
-        assert 'raise_if_gateway_feature_mode_blocks_direct_model_surface' in source
+        for marker in markers:
+            assert marker in source
 
 
 def _load_inventory() -> dict:

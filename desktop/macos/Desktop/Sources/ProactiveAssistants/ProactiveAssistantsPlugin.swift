@@ -1201,6 +1201,7 @@ public class ProactiveAssistantsPlugin: NSObject {
       queue: .main
     ) { [weak self] _ in
       Task { @MainActor in
+        ContextVisitCoordinator.interruptForSleepIfEnabled()
         self?.handleScreenLock()
       }
     }
