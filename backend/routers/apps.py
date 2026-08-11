@@ -69,7 +69,6 @@ from database.apps import (
 from database.webhook_health import clear_app_webhook_health
 from database.auth import get_user_from_uid
 from database.redis_db import (
-    delete_generic_cache,
     get_generic_cache,
     set_generic_cache,
     get_specific_user_review,
@@ -79,7 +78,6 @@ from database.redis_db import (
     disable_app,
     is_app_enabled,
     delete_app_cache_by_id,
-    is_username_taken,
     save_username,
     get_enabled_apps,
     get_conversation_summary_app_ids,
@@ -152,7 +150,6 @@ from utils.social import (
     upsert_persona_from_twitter_profile,
     add_twitter_to_persona,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -1568,7 +1565,7 @@ async def generate_app_endpoint(data: GenerateAppRequest, uid: str = Depends(aut
     Generate an app configuration from a natural language prompt.
     This is an experimental feature that uses AI to create app configurations.
     """
-    from utils.llm.app_generator import generate_app_from_prompt, generate_app_icon
+    from utils.llm.app_generator import generate_app_from_prompt
 
     prompt = data.prompt.strip()
     if not prompt:
@@ -2165,7 +2162,7 @@ async def enable_app_endpoint(app_id: str, uid: str = Depends(auth.get_current_u
             raise HTTPException(status_code=400, detail='App setup is not completed')
 
     # Check payment status
-    if app.is_paid and await run_blocking(db_executor, get_is_user_paid_app, app.id, uid) == False:
+    if app.is_paid and not await run_blocking(db_executor, get_is_user_paid_app, app.id, uid):
         raise HTTPException(status_code=403, detail='You are not authorized to perform this action')
 
     await run_blocking(db_executor, enable_app, uid, app_id)
