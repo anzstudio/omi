@@ -6,6 +6,8 @@
 
 #include "lib/core/mic.h"
 
+#include <string.h>
+
 #include <nrfx_pdm.h>
 #include <zephyr/audio/dmic.h>
 #include <zephyr/kernel.h>
@@ -79,6 +81,11 @@ static bool aad_thread_started; /* aad_thread_data is a live thread */
 static K_SEM_DEFINE(aad_sem, 0, 1);
 #define AAD_PDM_SETTLE_MS 20
 
+/* Measured settling transient after a wake is ~5.1-6.3ms (AAD_HARDWARE.md);
+ * 15ms leaves a safety margin without eating much real audio -- keyword-
+ * triggered capture needs the wake block's audio, not just clean-later. */
+#define AAD_WAKE_MUTE_SAMPLES (MAX_SAMPLE_RATE * 15 / 1000)
+
 static atomic_t aad_wake_pending = ATOMIC_INIT(0); /* WAKE edge seen by ISR */
 static atomic_t aad_woke = ATOMIC_INIT(0);         /* tell mic ctx it just woke */
 static atomic_t aad_in_sleep = ATOMIC_INIT(0);     /* mic is in hardware AAD sleep */
@@ -123,15 +130,16 @@ static void process_audio_buffer(void *buffer, uint32_t size)
     interleaved_stereo_to_mono(inter, frames, mono_buffer);
 
 #ifdef CONFIG_OMI_ENABLE_T5838_AAD
-    /* First block after an AAD wake carries ~7ms of railed/settling-transient
-     * PCM baked in by the T5838 restart itself (measured in AAD_HARDWARE.md:
-     * "first ~7ms rail to +-32767, unusable", matches datasheet wake time).
-     * One 100ms block safely covers it. Drop it here instead of letting it
-     * reach the codec, where it would encode as an audible pop/click. */
+    /* First ~7ms after an AAD wake is railed/settling-transient PCM baked in
+     * by the T5838 restart itself (measured in AAD_HARDWARE.md: "first ~7ms
+     * rail to +-32767, unusable"). Zero out a safety-margined leading window
+     * of this block instead of dropping the whole ~100ms block -- keyword-
+     * triggered capture depends on the rest of this block reaching the
+     * codec, since the trigger word itself may start right here. */
     if (atomic_cas(&aad_woke, 1, 0)) {
         aad_last_voice_ms = k_uptime_get();
-        k_mem_slab_free(&mem_slab, buffer);
-        return;
+        size_t mute = frames < AAD_WAKE_MUTE_SAMPLES ? frames : AAD_WAKE_MUTE_SAMPLES;
+        memset(mono_buffer, 0, mute * sizeof(int16_t));
     }
     aad_track_silence(mono_buffer, frames);
 #endif
@@ -438,9 +446,9 @@ static void aad_thread_fn(void *p1, void *p2, void *p3)
     }
 }
 
-/* Called per mic frame (never the wake block itself -- process_audio_buffer
- * consumes aad_woke and drops that one before this runs): track silence and
- * request AAD sleep after a hold. */
+/* Called per mic frame, including the wake block itself (process_audio_buffer
+ * has already zeroed its leading settling-noise window by the time this
+ * runs): track silence and request AAD sleep after a hold. */
 static void aad_track_silence(const int16_t *buf, size_t n)
 {
     int64_t now = k_uptime_get();
