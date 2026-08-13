@@ -183,6 +183,11 @@ void check_button_level(struct k_work *work_item)
     if (btn_state == BUTTON_PRESSED && !btn_is_pressed) {
         btn_is_pressed = true;
         btn_press_start_time = current_time;
+        // notify_press() was defined but never called -- the phone never learned
+        // a press had *started*, only ever saw tap/double-tap/release after the
+        // fact. That's what app-side long-press detection needs: a start
+        // timestamp to measure the hold against.
+        notify_press();
     } else if (btn_state == BUTTON_RELEASED && btn_is_pressed) {
         btn_is_pressed = false;
         btn_release_time = current_time;
