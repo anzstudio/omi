@@ -19,9 +19,15 @@
 #include "speaker.h"
 #include "transport.h"
 #include "wdog_facade.h"
-#ifdef CONFIG_OMI_ENABLE_OFFLINE_STORAGE
+// Unconditional: is_sd_on()/app_sd_off() (used unconditionally in
+// turnoff_all() below) are declared unguarded at the top of sd_card.h --
+// only the ring-buffer/storage-specific declarations further down that
+// header are wrapped in CONFIG_OMI_ENABLE_OFFLINE_STORAGE. Gating this
+// #include on the same flag left is_sd_on/app_sd_off with no visible
+// declaration when storage is off, silently compiling via implicit
+// declaration (-Wimplicit-function-declaration, not treated as an error
+// by this toolchain -- caught by review, not by the build).
 #include "sd_card.h"
-#endif
 
 LOG_MODULE_REGISTER(button, CONFIG_LOG_DEFAULT_LEVEL);
 
