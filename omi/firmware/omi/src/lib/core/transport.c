@@ -724,7 +724,7 @@ static void _le_param_updated(struct bt_conn *conn, uint16_t interval, uint16_t 
             latency,
             supervision_timeout);
 
-    if (interval > 24) {
+    if (interval > 40) {
         LOG_WRN("Connection interval still high (%u units). Re-requesting preferred params.", interval);
         update_conn_params(conn);
     }
@@ -783,13 +783,13 @@ static void update_conn_params(struct bt_conn *conn)
 {
     int err = 0;
     const struct bt_le_conn_param preferred_param = {
-        .interval_min = 6,
-        .interval_max = 12,
+        .interval_min = 24,
+        .interval_max = 40,
         .latency = 0,
         .timeout = 400,
     };
 
-    LOG_INF("Requesting conn params update (7.5-15ms, latency 0)...");
+    LOG_INF("Requesting conn params update (30-50ms, latency 0)...");
     for (int attempt = 1; attempt <= CONN_PARAM_RETRY_COUNT; attempt++) {
         err = bt_conn_le_param_update(conn, &preferred_param);
         if (!err) {
