@@ -189,6 +189,11 @@ void check_button_level(struct k_work *work_item)
     if (btn_state == BUTTON_PRESSED && !btn_is_pressed) {
         btn_is_pressed = true;
         btn_press_start_time = current_time;
+        // A fresh physical press starts a new gesture.  The previous release
+        // leaves btn_last_event at BUTTON_EVENT_RELEASE; without clearing it,
+        // every later release is mistaken for a duplicate and never reaches
+        // the phone.
+        btn_last_event = BUTTON_EVENT_NONE;
         // notify_press() was defined but never called -- the phone never learned
         // a press had *started*, only ever saw tap/double-tap/release after the
         // fact. That's what app-side long-press detection needs: a start
